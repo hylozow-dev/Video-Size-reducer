@@ -9,11 +9,18 @@ version: "3.8"
 #    - Set USE_LOCAL_API=false in .env
 #
 # 2) Local Bot API server mode (for videos up to 2 GB):
-#    - Uncomment the `telegram-bot-api` service below.
 #    - Set USE_LOCAL_API=true and fill TELEGRAM_API_ID / TELEGRAM_API_HASH in .env
 #      (obtained from https://my.telegram.org).
-#    - Both services share the `bot-storage` volume so the bot can read files
-#      that the local API server saved to disk without re-downloading them.
+#    - Start with: docker compose --profile local-api up -d --build
+#
+#    IMPORTANT: When running in local mode, the local Bot API server reports
+#    an ABSOLUTE file path on its own filesystem (e.g.
+#    /var/lib/telegram-bot-api/<token>/documents/file_0.mp4) and aiogram reads
+#    that file directly from disk instead of downloading it over HTTP. For
+#    this to work, the `telegram-bot-api-data` volume below MUST be mounted
+#    at the *exact same absolute path* (/var/lib/telegram-bot-api) in BOTH
+#    the `bot` and `telegram-bot-api` containers. Do not change one side
+#    without changing the other, and do not point it at /app/storage.
 # ---------------------------------------------------------------------------
 
 services:
@@ -24,6 +31,8 @@ services:
       - .env
     volumes:
       - bot-storage:/app/storage
+      # Must match the telegram-bot-api service's mount path exactly (see note above).
+      - telegram-bot-api-data:/var/lib/telegram-bot-api:ro
 
   # Local Telegram Bot API server. Required only when USE_LOCAL_API=true.
   # Start it together with the bot via: docker compose --profile local-api up -d
@@ -36,7 +45,8 @@ services:
       TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
       TELEGRAM_LOCAL: "1"
     volumes:
-      - bot-storage:/app/storage
+      # Files downloaded by this server are written here; must be shared
+      # with the `bot` service at the identical path (see note above).
       - telegram-bot-api-data:/var/lib/telegram-bot-api
     # No ports exposed publicly: the bot talks to it over the internal
     # docker network at http://telegram-bot-api:8081
