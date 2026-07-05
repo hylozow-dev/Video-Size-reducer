@@ -168,3 +168,7 @@ target size instead of silently failing.
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+
+## Contact
+
+Telegram: [@hylozo](https://t.me/hylozo)
