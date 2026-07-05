@@ -43,6 +43,23 @@ class Settings(BaseSettings):
     ffmpeg_bin: str = Field(default="ffmpeg", alias="FFMPEG_BIN")
     ffprobe_bin: str = Field(default="ffprobe", alias="FFPROBE_BIN")
 
+    # --- Admin ---
+    admin_user_ids: list[int] = Field(default_factory=list, alias="ADMIN_USER_ID")
+
+    @field_validator("admin_user_ids", mode="before")
+    @classmethod
+    def _parse_admin_ids(cls, value: object) -> list[int]:
+        """Accept a single int, a comma-separated string, or a list."""
+        if isinstance(value, int):
+            return [value]
+        if isinstance(value, str):
+            if not value.strip():
+                return []
+            return [int(x.strip()) for x in value.split(",") if x.strip()]
+        if isinstance(value, list):
+            return [int(x) for x in value]
+        return []
+
     # --- Logging ---
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 

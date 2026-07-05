@@ -21,6 +21,7 @@ from bot.keyboards import (
     cancel_keyboard,
     compression_mode_keyboard,
 )
+from bot.services.user_store import record_user, record_video_request
 from bot.services.ffmpeg_service import (
     CompressionError,
     Preset,
@@ -110,6 +111,20 @@ async def _extract_incoming_video(message: Message) -> tuple[str, str, Optional[
 @router.message(F.video | (F.document & F.func(_looks_like_video_document)))
 async def handle_incoming_video(message: Message, state: FSMContext) -> None:
     file_id, filename, file_size = await _extract_incoming_video(message)
+
+    # Record user and video request for admin panel
+    if message.from_user:
+        record_user(
+            user_id=message.from_user.id,
+            username=message.from_user.username,
+            first_name=message.from_user.first_name,
+        )
+        record_video_request(
+            user_id=message.from_user.id,
+            file_id=file_id,
+            filename=filename,
+            file_size=file_size,
+        )
 
     if file_size and file_size > settings.telegram_file_size_limit_bytes:
         limit_mb = settings.telegram_file_size_limit_bytes / (1024 * 1024)
