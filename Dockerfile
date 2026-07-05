@@ -11,6 +11,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY bot ./bot
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 # uid/gid 101 intentionally matches the "telegram-bot-api" user used by the
 # aiogram/telegram-bot-api image. When running in local-api mode, that
@@ -20,13 +21,18 @@ COPY bot ./bot
 RUN groupadd --gid 101 appuser \
     && useradd --uid 101 --gid 101 --create-home --shell /bin/bash appuser \
     && mkdir -p /app/storage \
-    && chown -R appuser:appuser /app
+    && chown -R appuser:appuser /app \
+    && chmod +x /usr/local/bin/docker-entrypoint.sh
 
-USER appuser
+# Stays root at container start on purpose: the entrypoint script fixes
+# ownership of any mounted volumes (which may pre-date the uid=101 pin
+# above, e.g. volumes created by an older image version) before dropping
+# privileges to 'appuser' to actually run the app. See docker-entrypoint.sh.
 
 ENV PYTHONUNBUFFERED=1 \
     STORAGE_DIR=/app/storage
 
 VOLUME ["/app/storage"]
 
-ENTRYPOINT ["python", "-m", "bot.main"]
+ENTRYPOINT ["docker-entrypoint.sh"]
+CMD ["python", "-m", "bot.main"]
