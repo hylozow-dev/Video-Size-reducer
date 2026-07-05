@@ -9,3 +9,5 @@ class CompressStates(StatesGroup):
     choosing_mode = State()
     # Waiting for the user to type a target size in MB.
     waiting_target_size = State()
+    # Waiting for the user to pick encoding speed (fast/normal/best).
+    choosing_speed = State()

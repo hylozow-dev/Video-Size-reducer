@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from bot.services.ffmpeg_service import Preset
+from bot.services.ffmpeg_service import Preset, Speed
 
 CB_PRESET_PREFIX = "preset:"
 CB_CUSTOM_SIZE = "custom_size"
+CB_SPEED_PREFIX = "speed:"
 CB_CANCEL = "cancel"
 
 
@@ -59,3 +60,31 @@ def cancel_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text="✖️ Cancel", callback_data=CB_CANCEL)]]
     )
+
+
+def speed_keyboard() -> InlineKeyboardMarkup:
+    """Speed selection keyboard shown after user picks a quality preset or target size."""
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=Speed.FAST.label,
+                callback_data=f"{CB_SPEED_PREFIX}{Speed.FAST.value}",
+                style="success",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=Speed.NORMAL.label,
+                callback_data=f"{CB_SPEED_PREFIX}{Speed.NORMAL.value}",
+                style="primary",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=Speed.BEST.label,
+                callback_data=f"{CB_SPEED_PREFIX}{Speed.BEST.value}",
+            )
+        ],
+        [InlineKeyboardButton(text="✖️ Cancel", callback_data=CB_CANCEL)],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
