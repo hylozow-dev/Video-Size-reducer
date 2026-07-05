@@ -109,6 +109,14 @@ def _build_command(
 ) -> list[str]:
     cmd = [ffmpeg_bin, "-y", "-i", str(input_path)]
 
+    # -map 0:v:0 -map 0:a:0? explicitly selects only the first video and
+    # first audio stream (the '?' makes audio optional so files without
+    # audio don't error). This avoids ffmpeg trying to mux subtitle or
+    # data tracks from containers like MKV/MOV into MP4 which doesn't
+    # support them, preventing "codec not currently supported in container"
+    # errors.
+    cmd += ["-map", "0:v:0", "-map", "0:a:0?"]
+
     # Cap resolution at 1080p on the long edge to help hit smaller targets
     # without a visible quality cliff. Only downscales, never upscales.
     # force_divisible_by=2 ensures both dimensions are even, which is
