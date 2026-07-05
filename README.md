@@ -167,4 +167,4 @@ target size instead of silently failing.
 
 ## License
 
-No license specified yet — add one appropriate for your use case.
+This project is licensed under the [MIT License](LICENSE).
