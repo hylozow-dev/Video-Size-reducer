@@ -98,7 +98,7 @@ async def _extract_incoming_video(message: Message) -> tuple[str, str, Optional[
     raise ValueError("Message does not contain a supported video")
 
 
-@router.message(F.video | F.document.func(_looks_like_video_document))
+@router.message(F.video | (F.document & F.func(_looks_like_video_document)))
 async def handle_incoming_video(message: Message, state: FSMContext) -> None:
     file_id, filename, file_size = await _extract_incoming_video(message)
 
