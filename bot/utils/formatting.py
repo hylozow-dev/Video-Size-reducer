@@ -36,3 +36,18 @@ def reduction_percent(original_bytes: int, new_bytes: int) -> float:
         return 0.0
     reduction = (original_bytes - new_bytes) / original_bytes * 100
     return max(reduction, 0.0)
+
+
+def human_wait_estimate(seconds: float) -> str:
+    """Format a rough wait-time estimate for queue messages.
+
+    Examples: '~45 sec', '~2 min', '~2 min 30 sec'.
+    """
+    seconds = max(seconds, 0.0)
+    if seconds < 60:
+        return f"~{int(round(seconds))} sec"
+    minutes = int(seconds // 60)
+    secs = int(round(seconds % 60))
+    if secs == 0:
+        return f"~{minutes} min"
+    return f"~{minutes} min {secs} sec"

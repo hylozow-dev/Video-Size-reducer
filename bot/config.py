@@ -52,6 +52,18 @@ class Settings(BaseSettings):
         value.mkdir(parents=True, exist_ok=True)
         return value
 
+    @field_validator("max_concurrent_jobs", mode="after")
+    @classmethod
+    def _hard_cap_single_job(cls, value: int) -> int:
+        """Hard safety limit: never allow more than one ffmpeg job to run
+        at the same time, no matter what is configured via the
+        MAX_CONCURRENT_JOBS environment variable. Running more than one
+        heavy ffmpeg encode concurrently risks exhausting CPU/RAM and
+        crashing the host, so this is intentionally not adjustable upward.
+        Everyone else waits in a queue (see bot/services/queue_tracker.py).
+        """
+        return 1 if value > 1 or value < 1 else value
+
     @property
     def max_input_size_bytes(self) -> int:
         return self.max_input_size_mb * 1024 * 1024
