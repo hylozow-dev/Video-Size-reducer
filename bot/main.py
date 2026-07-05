@@ -12,7 +12,7 @@ from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from bot.config import settings
-from bot.handlers import common, video
+from bot.handlers import admin, common, video
 from bot.logging_setup import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,7 @@ def _build_bot() -> Bot:
 def _build_dispatcher() -> Dispatcher:
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(common.router)
+    dp.include_router(admin.router)
     dp.include_router(video.router)
     return dp
 
