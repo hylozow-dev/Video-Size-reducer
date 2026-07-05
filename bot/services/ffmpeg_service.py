@@ -111,7 +111,13 @@ def _build_command(
 
     # Cap resolution at 1080p on the long edge to help hit smaller targets
     # without a visible quality cliff. Only downscales, never upscales.
-    scale_filter = "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease"
+    # force_divisible_by=2 ensures both dimensions are even, which is
+    # required by libx264 (and most other codecs).
+    scale_filter = (
+        "scale='min(1920,iw)':'min(1080,ih)'"
+        ":force_original_aspect_ratio=decrease"
+        ":force_divisible_by=2"
+    )
 
     if plan.mode == "preset":
         assert plan.preset is not None
