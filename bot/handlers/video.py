@@ -29,17 +29,26 @@ from bot.services.ffmpeg_service import (
     plan_for_target_size,
 )
 from bot.services.media_info import ProbeError, probe_video
+from bot.services.queue_tracker import queue_tracker
 from bot.states import CompressStates
-from bot.utils.formatting import human_duration, human_size, progress_bar, reduction_percent
+from bot.utils.formatting import (
+    human_duration,
+    human_size,
+    human_wait_estimate,
+    progress_bar,
+    reduction_percent,
+)
 from bot.utils.tempfiles import cleanup_job_dir, job_dir, new_job_id
 
 logger = logging.getLogger(__name__)
 
 router = Router(name="video")
 
-# Global cap on how many ffmpeg jobs may run at the same time, regardless of
-# how many users are using the bot concurrently.
-_job_semaphore = asyncio.Semaphore(settings.max_concurrent_jobs)
+# HARD LIMIT: exactly one ffmpeg job runs at a time, no matter what.
+# settings.max_concurrent_jobs is clamped to 1 in bot/config.py, but the
+# literal 1 is used directly here too so this guarantee can never regress
+# even if that clamp is ever loosened by mistake.
+_job_semaphore = asyncio.Semaphore(1)
 
 _VIDEO_EXTENSIONS = (".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v", ".3gp", ".ts")
 
@@ -221,10 +230,32 @@ async def _run_compression_job(
         except TelegramBadRequest:
             pass
 
-    if _job_semaphore.locked():
-        await set_status("⏳ Queued — waiting for another job to finish...")
+    # The bot processes exactly one video at a time (see _job_semaphore
+    # above), to avoid overloading the host. Anyone arriving while a job is
+    # already running is placed in a FIFO queue and told roughly how long
+    # they'll have to wait, based on the currently active job's progress.
+    queue_position: Optional[int] = None
+    if queue_tracker.is_busy:
+        queue_position = queue_tracker.enter_queue()
+        wait_estimate = queue_tracker.estimate_wait_seconds_for_position(queue_position)
+        people_ahead = queue_position - 1
+        ahead_note = (
+            f" ({people_ahead} other{'s' if people_ahead != 1 else ''} ahead of you)"
+            if people_ahead
+            else ""
+        )
+        await set_status(
+            "⏳ <b>Someone else's video is currently being processed.</b>\n"
+            f"You're in the queue{ahead_note}.\n"
+            f"Estimated wait: <b>{human_wait_estimate(wait_estimate)}</b>.\n\n"
+            "I'll start on your video automatically as soon as it's your turn."
+        )
 
     async with _job_semaphore:
+        if queue_position is not None:
+            queue_tracker.leave_queue()
+        queue_tracker.start_job()
+
         job_id = new_job_id()
         jdir = job_dir(settings.storage_dir, job_id)
         input_path = jdir / f"input_{Path(filename).name}"
@@ -245,6 +276,8 @@ async def _run_compression_job(
                 )
                 return
 
+            queue_tracker.set_video_duration(info.duration_sec)
+
             try:
                 if preset is not None:
                     plan = plan_for_preset(preset)
@@ -263,6 +296,12 @@ async def _run_compression_job(
             )
             await set_status(f"🛠 Compressing...\n{progress_bar(0)}")
 
+            queue_tracker.mark_compression_started()
+
+            async def on_progress(fraction: float) -> None:
+                queue_tracker.update_progress(fraction)
+                await reporter.update(fraction)
+
             try:
                 await compress_video(
                     input_path=input_path,
@@ -270,7 +309,7 @@ async def _run_compression_job(
                     plan=plan,
                     info=info,
                     ffmpeg_bin=settings.ffmpeg_bin,
-                    on_progress=reporter.update,
+                    on_progress=on_progress,
                 )
             except CompressionError as exc:
                 logger.error("Compression failed for job %s: %s", job_id, exc)
@@ -307,6 +346,7 @@ async def _run_compression_job(
 
         finally:
             cleanup_job_dir(settings.storage_dir, job_id)
+            queue_tracker.finish_job()
 
 
 def _build_result_caption(
