@@ -273,7 +273,12 @@ async def _run_compression_job(
 
         job_id = new_job_id()
         jdir = job_dir(settings.storage_dir, job_id)
-        input_path = jdir / f"input_{Path(filename).name}"
+        # Use a safe filename: keep only the extension from the original
+        # name to avoid path issues with unicode/special chars in filenames.
+        ext = Path(filename).suffix.lower() or ".mp4"
+        if ext not in (".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v", ".3gp", ".ts", ".flv", ".wmv"):
+            ext = ".mp4"
+        input_path = jdir / f"input{ext}"
         output_path = jdir / "output.mp4"
 
         try:
