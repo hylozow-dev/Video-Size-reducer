@@ -53,21 +53,44 @@ class Preset(str, Enum):
         }[self]
 
 
+class Speed(str, Enum):
+    """Controls the x264 encoding preset which trades CPU time for compression
+    efficiency. Faster = less CPU = quicker delivery, but slightly larger file
+    (or slightly lower quality at the same size)."""
+
+    FAST = "fast"          # x264 preset: veryfast — ~3-4x faster than normal
+    NORMAL = "normal"      # x264 preset: medium — default balance
+    BEST = "best"          # x264 preset: slow — ~2x slower, best compression
+
+    @property
+    def x264_preset(self) -> str:
+        return {Speed.FAST: "veryfast", Speed.NORMAL: "medium", Speed.BEST: "slow"}[self]
+
+    @property
+    def label(self) -> str:
+        return {
+            Speed.FAST: "⚡ Fast (quick delivery, slightly larger file)",
+            Speed.NORMAL: "⚖️ Normal (balanced speed/quality)",
+            Speed.BEST: "💎 Best (slower, optimal compression)",
+        }[self]
+
+
 @dataclass(slots=True)
 class CompressionPlan:
     """Describes how a video will be encoded."""
 
     mode: str  # "preset" | "target_size"
+    speed: Speed = Speed.NORMAL
     preset: Optional[Preset] = None
     target_size_mb: Optional[float] = None
     video_bitrate_kbps: Optional[int] = None
 
 
-def plan_for_preset(preset: Preset) -> CompressionPlan:
-    return CompressionPlan(mode="preset", preset=preset)
+def plan_for_preset(preset: Preset, speed: Speed = Speed.NORMAL) -> CompressionPlan:
+    return CompressionPlan(mode="preset", preset=preset, speed=speed)
 
 
-def plan_for_target_size(info: VideoInfo, target_size_mb: float) -> CompressionPlan:
+def plan_for_target_size(info: VideoInfo, target_size_mb: float, speed: Speed = Speed.NORMAL) -> CompressionPlan:
     """Compute the video bitrate required to hit `target_size_mb`.
 
     Raises ValueError if the target size is unreasonably small for the
@@ -91,6 +114,7 @@ def plan_for_target_size(info: VideoInfo, target_size_mb: float) -> CompressionP
         mode="target_size",
         target_size_mb=target_size_mb,
         video_bitrate_kbps=video_kbps,
+        speed=speed,
     )
 
 
@@ -108,6 +132,10 @@ def _build_command(
     ffmpeg_bin: str,
 ) -> list[str]:
     cmd = [ffmpeg_bin, "-y", "-i", str(input_path)]
+
+    # Use multiple CPU threads for faster encoding. 0 = let ffmpeg decide
+    # based on available cores (typically uses all cores).
+    cmd += ["-threads", "0"]
 
     # -map 0:v:0 -map 0:a:0? explicitly selects only the first video and
     # first audio stream (the '?' makes audio optional so files without
@@ -135,7 +163,7 @@ def _build_command(
             "-c:v",
             "libx264",
             "-preset",
-            "medium",
+            plan.speed.x264_preset,
             "-crf",
             str(plan.preset.crf),
         ]
@@ -149,7 +177,7 @@ def _build_command(
             "-c:v",
             "libx264",
             "-preset",
-            "medium",
+            plan.speed.x264_preset,
             "-b:v",
             f"{v_kbps}k",
             "-maxrate",

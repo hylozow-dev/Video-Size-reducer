@@ -18,13 +18,16 @@ from bot.keyboards import (
     CB_CANCEL,
     CB_CUSTOM_SIZE,
     CB_PRESET_PREFIX,
+    CB_SPEED_PREFIX,
     cancel_keyboard,
     compression_mode_keyboard,
+    speed_keyboard,
 )
 from bot.services.user_store import record_user, record_video_request
 from bot.services.ffmpeg_service import (
     CompressionError,
     Preset,
+    Speed,
     compress_video,
     plan_for_preset,
     plan_for_target_size,
@@ -183,18 +186,16 @@ async def handle_preset_choice(callback: CallbackQuery, state: FSMContext, bot: 
         return
 
     await callback.answer()
-    data = await state.get_data()
-    await state.clear()
-    await _run_compression_job(
-        bot=bot,
-        chat_id=callback.message.chat.id,
-        status_message_id=callback.message.message_id,
-        file_id=data["file_id"],
-        filename=data["filename"],
-        original_size=data.get("file_size"),
-        preset=preset,
-        target_size_mb=None,
-    )
+    # Save preset choice and ask for speed
+    await state.update_data(chosen_preset=preset_value)
+    await state.set_state(CompressStates.choosing_speed)
+    if callback.message:
+        await callback.message.edit_text(
+            "⚡ How fast should I encode?\n\n"
+            "Faster = quicker delivery but slightly larger file.\n"
+            "Best = slower but optimal compression.",
+            reply_markup=speed_keyboard(),
+        )
 
 
 @router.message(CompressStates.waiting_target_size, F.text)
@@ -213,18 +214,55 @@ async def handle_target_size_input(message: Message, state: FSMContext, bot: Bot
         return
 
     data = await state.get_data()
+    # Save target size and ask for speed
+    await state.update_data(chosen_target_mb=target_mb)
+    await state.set_state(CompressStates.choosing_speed)
+    await message.answer(
+        "⚡ How fast should I encode?\n\n"
+        "Faster = quicker delivery but slightly larger file.\n"
+        "Best = slower but optimal compression.",
+        reply_markup=speed_keyboard(),
+    )
+
+
+@router.callback_query(CompressStates.choosing_speed, F.data.startswith(CB_SPEED_PREFIX))
+async def handle_speed_choice(callback: CallbackQuery, state: FSMContext, bot: Bot) -> None:
+    if not callback.data or not callback.message:
+        await callback.answer()
+        return
+
+    speed_value = callback.data.removeprefix(CB_SPEED_PREFIX)
+    try:
+        speed = Speed(speed_value)
+    except ValueError:
+        await callback.answer("Unknown option.", show_alert=True)
+        return
+
+    await callback.answer()
+    data = await state.get_data()
     await state.clear()
 
-    status = await message.answer("⏳ Starting...")
+    # Determine what was chosen in the previous step
+    chosen_preset_value = data.get("chosen_preset")
+    chosen_target_mb = data.get("chosen_target_mb")
+
+    preset: Optional[Preset] = None
+    target_size_mb: Optional[float] = None
+    if chosen_preset_value:
+        preset = Preset(chosen_preset_value)
+    elif chosen_target_mb is not None:
+        target_size_mb = float(chosen_target_mb)
+
     await _run_compression_job(
         bot=bot,
-        chat_id=message.chat.id,
-        status_message_id=status.message_id,
+        chat_id=callback.message.chat.id,
+        status_message_id=callback.message.message_id,
         file_id=data["file_id"],
         filename=data["filename"],
         original_size=data.get("file_size"),
-        preset=None,
-        target_size_mb=target_mb,
+        preset=preset,
+        target_size_mb=target_size_mb,
+        speed=speed,
     )
 
 
@@ -238,6 +276,7 @@ async def _run_compression_job(
     original_size: Optional[int],
     preset: Optional[Preset],
     target_size_mb: Optional[float],
+    speed: Speed = Speed.NORMAL,
 ) -> None:
     async def set_status(text: str) -> None:
         try:
@@ -300,10 +339,10 @@ async def _run_compression_job(
 
             try:
                 if preset is not None:
-                    plan = plan_for_preset(preset)
+                    plan = plan_for_preset(preset, speed)
                 else:
                     assert target_size_mb is not None
-                    plan = plan_for_target_size(info, target_size_mb)
+                    plan = plan_for_target_size(info, target_size_mb, speed)
             except ValueError as exc:
                 await set_status(f"⚠️ {exc}")
                 return
